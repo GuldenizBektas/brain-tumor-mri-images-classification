@@ -1,6 +1,6 @@
 from image_process import (create_dataset, display_augmented_images, display_image, 
                            plot_loss_curves, make_confusion_matrix, pred_and_plot,
-                           calculate_results, load_and_prep_image)
+                           calculate_results, load_and_prep_image, generate_class_weights)
 
 import numpy as np
 import os
@@ -50,6 +50,7 @@ valid_ds = create_dataset("validation",
 classes = train_ds.class_names
 valid_classes = valid_ds.class_names
 
+y_train= tf.concat([y for x, y in train_ds], axis=0)
 y_true = np.concatenate([y for x, y in valid_ds], axis=0)
 
 # add some normalization and data augmentation
@@ -78,11 +79,11 @@ valid_ds = valid_ds.prefetch(tf.data.AUTOTUNE)
 # create model
 inputs = keras.Input(shape=(IMAGE_HEIGHT, IMAGE_WIDTH, 3))
 #x = data_augmentation(inputs)
-
 x = Conv2D(128, kernel_size=3, activation="relu", padding="same")(inputs)
-x = MaxPooling2D(2)(x)
 x = Conv2D(128, kernel_size=3, activation="relu", padding="same")(x)
+x = MaxPooling2D(2)(x)
 x = layers.Dropout(.2)(x)
+x = Conv2D(64, kernel_size=3, activation="relu", padding="same")(x)
 x = Conv2D(64, kernel_size=3, activation="relu", padding="same")(x)
 x = MaxPooling2D(2)(x)
 
@@ -90,6 +91,10 @@ x = Flatten(name="Flatten")(x)
 outputs = Dense(44, activation="softmax")(x)
 
 model = keras.Model(inputs=inputs, outputs=outputs)
+
+# generate class weights
+class_weights = generate_class_weights(y_train.numpy())
+print(class_weights)
 
 ###### callbacks ########
 early_stopping = EarlyStopping(monitor="val_loss", patience=3)
@@ -114,7 +119,8 @@ model.compile(
 history_ds = model.fit(train_ds, validation_data=valid_ds,
                        batch_size=BATCH_SIZE,
                        epochs=50,
-                       callbacks=[early_stopping, model_checkpoint])
+                       callbacks=[early_stopping, model_checkpoint],
+                       class_weight=class_weights)
 
 y_pred = model.predict(valid_ds, verbose=1)
 y_pred = np.argmax(y_pred, axis=1)
@@ -122,4 +128,4 @@ y_pred = np.argmax(y_pred, axis=1)
 plot_loss_curves(history_ds)
 pred_and_plot(model, "Astrocitoma T2.jpeg", classes, scale=False)
 calculate_results(y_true, y_pred)
-make_confusion_matrix(y_true, y_pred, figsize=(20,20), text_size=20, classes=valid_classes, savefig=True)
+make_confusion_matrix(y_true, y_pred, figsize=(30,30), text_size=20, classes=valid_classes, savefig=True)
